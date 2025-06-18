@@ -1,0 +1,65 @@
+name: Full Security Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run tests
+      run: npm test
+
+    # Dependency Check OWASP (SCA del código)
+    - name: Run OWASP Dependency-Check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: "SafeNotes"
+        format: "HTML"
+        outputDirectory: "dependency-check-report"
+
+    - name: Upload Dependency Check report
+      uses: actions/upload-artifact@v3
+      with:
+        name: dependency-check-report
+        path: dependency-check-report
+
+    # Build Docker image para Trivy
+    - name: Build Docker image
+      run: docker build -t safenotes-app .
+
+    # Trivy - escaneo de la imagen
+    - name: Trivy Docker Image Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: safenotes-app
+        format: table
+        exit-code: '0'
+        ignore-unfixed: true
+
+    # OWASP ZAP DAST
+    - name: Start target app
+      run: |
+        nohup npm start & 
+        sleep 10
+
+    - name: Run OWASP ZAP baseline scan
+      uses: zaproxy/action-baseline@v0.11.0
+      with:
+        target: 'http://localhost:3000'
+        fail_action: false
