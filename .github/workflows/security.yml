@@ -17,7 +17,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
 
     - name: Install dependencies
       run: npm install
@@ -25,8 +25,9 @@ jobs:
     - name: Run OWASP Dependency-Check
       uses: dependency-check/Dependency-Check_Action@main
       with:
-        project: "SafeNotes"
-        format: "HTML"
+        project: SafeNotes
+        scanPath: .
+        format: 'HTML'
 
     - name: Upload Dependency Check report
       uses: actions/upload-artifact@v4
@@ -38,17 +39,27 @@ jobs:
       run: docker build -t safenotes-app .
 
     - name: Trivy Docker Image Scan
-      uses: aquasecurity/trivy-action@master
+      run: docker run --rm -v ${{ github.workspace }}/trivy-report:/tmp aquasec/trivy:latest image --format html --output /tmp/trivy-report.html safenotes-app
+
+    - name: Upload Trivy Report
+      uses: actions/upload-artifact@v4
       with:
-        image-ref: safenotes-app
-        format: 'table'
+        name: trivy-report
+        path: trivy-report/trivy-report.html
 
     - name: Start target app
-      run: |
-        nohup node app.js &
-        sleep 5
+      run: docker run -d --name safenotes-app -p 3000:3000 safenotes-app
 
     - name: Run OWASP ZAP baseline scan
-      uses: zaproxy/action-baseline@v0.11.0
+      run: |
+        docker run --network host \
+          -v ${{ github.workspace }}/zap-report:/zap/wrk \
+          ghcr.io/zaproxy/zap-baseline \
+          -t http://localhost:3000 \
+          -r zap-report.html
+
+    - name: Upload ZAP Report
+      uses: actions/upload-artifact@v4
       with:
-        target: 'http://localhost:3000'
+        name: zap-report
+        path: zap-report/zap-report.html
